@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="CantonMaster">
+<meta name="theme-color" content="#0a0a0f">
+<title>CantonMaster</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap');
+  :root {
+    --bg:#0a0a0f;--surface:#13131a;--surface2:#1c1c27;--border:#2a2a3a;
+    --accent:#e8ff47;--accent2:#47ffe8;--text:#f0f0f8;--muted:#6b6b80;
+    --danger:#ff4747;--success:#47ff8a;
+    --font-display:'Syne',sans-serif;--font-mono:'DM Mono',monospace;
+    --radius:16px;--radius-sm:8px;
+    --safe-top:env(safe-area-inset-top,0px);--safe-bottom:env(safe-area-inset-bottom,0px);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font-display);overflow:hidden;overscroll-behavior:none;}
+  #app{height:100dvh;display:flex;flex-direction:column;position:relative;overflow:hidden;}
+
+  .screen{position:absolute;inset:0;display:flex;flex-direction:column;opacity:0;pointer-events:none;transition:opacity .35s ease,transform .35s ease;transform:translateX(40px);overflow-y:auto;-webkit-overflow-scrolling:touch;}
+  .screen.active{opacity:1;pointer-events:all;transform:translateX(0);}
+  .screen.exit{opacity:0;transform:translateX(-40px);pointer-events:none;}
+
+  .header{padding:calc(var(--safe-top) + 20px) 24px 20px;display:flex;align-items:center;gap:16px;flex-shrink:0;background:linear-gradient(to bottom,var(--bg) 60%,transparent);position:sticky;top:0;z-index:10;}
+  .back-btn{width:40px;height:40px;border:1.5px solid var(--border);border-radius:50%;background:var(--surface);color:var(--text);font-size:18px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:border-color .2s;font-family:var(--font-display);}
+  .back-btn:active{background:var(--surface2);border-color:var(--accent);}
+  .header-info{flex:1;min-width:0;}
+  .header-step{font-family:var(--font-mono);font-size:11px;color:var(--accent);letter-spacing:.15em;text-transform:uppercase;margin-bottom:2px;}
+  .header-title{font-size:20px;font-weight:700;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+
+  .progress-bar{height:2px;background:var(--border);position:relative;flex-shrink:0;}
+  .progress-fill{position:absolute;left:0;top:0;bottom:0;background:var(--accent);transition:width .5s cubic-bezier(.4,0,.2,1);box-shadow:0 0 12px var(--accent);}
+
+  .screen-body{flex:1;padding:24px;display:flex;flex-direction:column;gap:20px;}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;}
+  .card-label{font-family:var(--font-mono);font-size:10px;color:var(--muted);letter-spacing:.15em;text-transform:uppercase;margin-bottom:12px;}
+
+  .btn{width:100%;padding:18px 24px;border-radius:var(--radius);border:none;font-family:var(--font-display);font-size:16px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;transition:transform .15s,opacity .15s;}
+  .btn:active{transform:scale(.97);}
+  .btn:disabled{opacity:.35;pointer-events:none;}
+  .btn-primary{background:var(--accent);color:#0a0a0f;box-shadow:0 4px 24px rgba(232,255,71,.25);}
+  .btn-secondary{background:var(--surface2);color:var(--text);border:1.5px solid var(--border);}
+  .btn-ghost{background:transparent;color:var(--muted);border:1.5px dashed var(--border);}
+  .btn-record{background:transparent;border:2px solid var(--border);color:var(--text);}
+  .btn-record.recording{border-color:var(--danger);color:var(--danger);animation:pulse-border 1.5s ease-in-out infinite;}
+  @keyframes pulse-border{0%,100%{box-shadow:0 0 0 0 rgba(255,71,71,0)}50%{box-shadow:0 0 0 6px rgba(255,71,71,.15)}}
+
+  .rec-dot{width:10px;height:10px;border-radius:50%;background:var(--danger);animation:blink 1s step-end infinite;flex-shrink:0;}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.1}}
+
+  .photo-zone{border:2px dashed var(--border);border-radius:var(--radius);min-height:180px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:border-color .2s;position:relative;overflow:hidden;background:var(--surface);}
+  .photo-zone:active{border-color:var(--accent);}
+  .photo-zone.has-image{border-style:solid;}
+  .photo-zone img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:calc(var(--radius) - 2px);}
+  .photo-zone-overlay{position:absolute;inset:0;background:rgba(10,10,15,.65);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;border-radius:calc(var(--radius) - 2px);}
+  .photo-hint{font-family:var(--font-mono);font-size:12px;color:var(--muted);text-align:center;padding:0 16px;}
+
+  .photo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+  .photo-thumb{aspect-ratio:1;border-radius:var(--radius-sm);overflow:hidden;position:relative;background:var(--surface2);border:1px solid var(--border);}
+  .photo-thumb img{width:100%;height:100%;object-fit:cover;}
+  .remove-btn{position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:50%;background:rgba(10,10,15,.8);border:1px solid var(--border);color:var(--danger);font-size:12px;display:flex;align-items:center;justify-content:center;cursor:pointer;}
+  .photo-add-btn{aspect-ratio:1;border-radius:var(--radius-sm);border:2px dashed var(--border);background:var(--surface);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:pointer;transition:border-color .2s;}
+  .photo-add-btn:active{border-color:var(--accent);}
+  .photo-add-label{font-family:var(--font-mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;text-align:center;padding:0 4px;}
+
+  .field-row{display:flex;flex-direction:column;gap:4px;padding:12px 0;border-bottom:1px solid var(--border);}
+  .field-row:last-child{border-bottom:none;padding-bottom:0;}
+  .field-key{font-family:var(--font-mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.12em;}
+  .field-input{background:transparent;border:none;border-bottom:1.5px solid var(--border);color:var(--text);font-family:var(--font-display);font-size:15px;font-weight:600;padding:6px 0;width:100%;outline:none;transition:border-color .2s;}
+  .field-input:focus{border-color:var(--accent);}
+  .field-input::placeholder{color:var(--muted);font-weight:400;}
+
+  .audio-viz{display:flex;align-items:center;justify-content:center;gap:3px;height:48px;}
+  .bar{width:3px;border-radius:3px;background:var(--accent);transition:height .1s;}
+  .bar.inactive{background:var(--border);height:4px;}
+  .timer{font-family:var(--font-mono);font-size:32px;font-weight:500;color:var(--text);text-align:center;letter-spacing:.05em;}
+  .timer.recording{color:var(--danger);}
+
+  .badge{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:100px;font-family:var(--font-mono);font-size:11px;font-weight:500;letter-spacing:.1em;}
+  .badge-success{background:rgba(71,255,138,.1);color:var(--success);border:1px solid rgba(71,255,138,.25);}
+  .badge-warn{background:rgba(232,255,71,.08);color:var(--accent);border:1px solid rgba(232,255,71,.2);}
+  .badge-muted{background:var(--surface2);color:var(--muted);border:1px solid var(--border);}
+
+  .report-section{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;}
+  .report-section-header{padding:14px 20px;background:var(--surface2);border-bottom:1px solid var(--border);font-family:var(--font-mono);font-size:10px;color:var(--accent);letter-spacing:.15em;text-transform:uppercase;}
+  .report-section-body{padding:16px 20px;}
+  .report-field{display:grid;grid-template-columns:120px 1fr;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);align-items:start;}
+  .report-field:last-child{border-bottom:none;}
+  .report-field-key{font-family:var(--font-mono);font-size:11px;color:var(--muted);padding-top:2px;}
+  .report-field-val{font-size:14px;font-weight:600;color:var(--text);line-height:1.5;}
+  .report-field-val.highlight{color:var(--accent);}
+  .report-field-val.empty{color:var(--muted);font-weight:400;font-style:italic;}
+  .score-stars{font-size:20px;letter-spacing:2px;}
+
+  .report-photo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:4px;}
+  .report-photo-thumb{aspect-ratio:1;border-radius:var(--radius-sm);overflow:hidden;border:1px solid var(--border);}
+  .report-photo-thumb img{width:100%;height:100%;object-fit:cover;}
+
+  .spinner{width:36px;height:36px;border:2.5px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .loading-state{display:flex;flex-direction:column;align-items:center;gap:16px;padding:32px;}
+  .loading-label{font-family:var(--font-mono);font-size:12px;color:var(--muted);letter-spacing:.1em;text-align:center;}
+
+  .home-logo{font-size:13px;font-family:var(--font-mono);color:var(--muted);letter-spacing:.2em;text-transform:uppercase;}
+  .home-hero{padding:0 24px 32px;flex:1;display:flex;flex-direction:column;justify-content:center;}
+  .home-eyebrow{font-family:var(--font-mono);font-size:11px;color:var(--accent);letter-spacing:.2em;text-transform:uppercase;margin-bottom:16px;}
+  .home-title{font-size:48px;font-weight:800;line-height:1.0;margin-bottom:16px;letter-spacing:-.02em;}
+  .home-title span{color:var(--accent);}
+  .home-subtitle{font-size:15px;color:var(--muted);line-height:1.6;margin-bottom:32px;font-weight:400;}
+  .setup-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:12px;}
+  .setup-label{font-family:var(--font-mono);font-size:10px;color:var(--muted);letter-spacing:.15em;text-transform:uppercase;margin-bottom:10px;}
+  .setup-input{width:100%;background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:var(--font-mono);font-size:13px;padding:14px 16px;outline:none;transition:border-color .2s;}
+  .setup-input:focus{border-color:var(--accent);}
+  .setup-input::placeholder{color:var(--muted);}
+  .rfq-row{display:flex;align-items:center;gap:10px;background:rgba(232,255,71,.05);border:1px solid rgba(232,255,71,.2);border-radius:var(--radius-sm);padding:12px 16px;}
+  .rfq-prefix{font-family:var(--font-mono);font-size:13px;color:var(--accent);font-weight:500;white-space:nowrap;}
+  .rfq-input{background:transparent;border:none;outline:none;color:var(--accent);font-family:var(--font-mono);font-size:13px;font-weight:500;width:100%;}
+  .rfq-input::placeholder{color:rgba(232,255,71,.3);}
+
+  .transcript-box{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;font-family:var(--font-mono);font-size:12px;color:var(--muted);line-height:1.7;max-height:140px;overflow-y:auto;word-break:break-word;}
+
+  .screen-footer{padding:16px 24px calc(var(--safe-bottom) + 24px);display:flex;flex-direction:column;gap:10px;flex-shrink:0;background:linear-gradient(to top,var(--bg) 70%,transparent);position:sticky;bottom:0;}
+  .optional-label{text-align:center;font-family:var(--font-mono);font-size:10px;color:var(--muted);letter-spacing:.12em;text-transform:uppercase;}
+
+  .section-divider{display:flex;align-items:center;gap:12px;}
+  .section-divider-line{flex:1;height:1px;background:var(--border);}
+  .section-divider-label{font-family:var(--font-mono);font-size:10px;color:var(--muted);letter-spacing:.15em;text-transform:uppercase;white-space:nowrap;}
+
+  #toast{position:fixed;bottom:calc(var(--safe-bottom) + 80px);left:50%;transform:translateX(-50%) translateY(100px);background:var(--surface2);border:1px solid var(--border);border-radius:100px;padding:12px 20px;font-family:var(--font-mono);font-size:12px;color:var(--text);z-index:1001;transition:transform .3s cubic-bezier(.34,1.56,.64,1);white-space:nowrap;box-shadow:0 8px 32px rgba(0,0,0,.4);}
+  #toast.show{transform:translateX(-50%) translateY(0);}
+  ::-webkit-scrollbar{width:3px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+  #bottom-nav{position:fixed;bottom:0;left:0;right:0;height:calc(62px + var(--safe-bottom));background:var(--surface);border-top:1px solid var(--border);display:none;align-items:stretch;z-index:100;padding-bottom:var(--safe-bottom);}
+  #bottom-nav.visible{display:flex;}
+  .nav-tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;border:none;background:transparent;padding:0;position:relative;transition:opacity .15s;}
+  .nav-tab:active{opacity:.5;}
+  .nav-icon{font-size:20px;line-height:1;}
+  .nav-label{font-family:var(--font-mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);transition:color .15s;}
+  .nav-tab.active .nav-label{color:var(--accent);}
+  .nav-dot{width:5px;height:5px;border-radius:50%;background:var(--success);position:absolute;top:6px;right:calc(50% - 16px);display:none;}
+  .nav-dot.show{display:block;}
+  .with-nav{padding-bottom:calc(62px + var(--safe-bottom));}
+</style>
+</head>
+<body>
+<div id="app">
+<div id="toast"></div>
+
+<!-- BOTTOM NAV -->
+<div id="bottom-nav">
+  <button class="nav-tab" id="nav-card" onclick="navTo('screen-card')">
+    <div class="nav-dot" id="dot-card"></div>
+    <div class="nav-icon">📇</div>
+    <div class="nav-label">Tarjeta</div>
+  </button>
+  <button class="nav-tab" id="nav-photos" onclick="navTo('screen-photos')">
+    <div class="nav-dot" id="dot-photos"></div>
+    <div class="nav-icon">📷</div>
+    <div class="nav-label">Fotos</div>
+  </button>
+  <button class="nav-tab" id="nav-conv" onclick="navTo('screen-conv')">
+    <div class="nav-dot" id="dot-conv"></div>
+    <div class="nav-icon">🎙</div>
+    <div class="nav-label">Audio</div>
+  </button>
+  <button class="nav-tab" id="nav-notes" onclick="navTo('screen-notes')">
+    <div class="nav-dot" id="dot-notes"></div>
+    <div class="nav-icon">📝</div>
+    <div class="nav-label">Notas</div>
+  </button>
+  <button class="nav-tab" id="nav-report" onclick="generateReport()">
+    <div class="nav-icon">📄</div>
+    <div class="nav-label">Informe</div>
+  </button>
+</div>
+
+<!-- HOME -->
+<div class="screen active" id="screen-home">
+  <div class="header"><div class="home-logo">CantonMaster</div></div>
+  <div class="home-hero">
+    <div class="home-eyebrow">Feria de Cantón · Supplier Intel</div>
+    <div class="home-title">Capturá.<br><span>Analizá.</span><br>Avanzá.</div>
+    <div class="home-subtitle">Tarjeta · fotos · conversación · notas.<br>PDF + ZIP descargables con imágenes.</div>
+    <div class="setup-card">
+      <div class="setup-label">Anthropic API Key</div>
+      <input class="setup-input" id="api-key-input" type="password" placeholder="sk-ant-api03-..." autocomplete="off" spellcheck="false">
+    </div>
+    <div class="setup-card" style="margin-bottom:0;">
+      <div class="setup-label">RFQ (opcional)</div>
+      <div class="rfq-row"><span class="rfq-prefix">RFQ-2026-</span><input class="rfq-input" id="rfq-base" placeholder="NNN" maxlength="3" inputmode="numeric"></div>
+    </div>
+  </div>
+  <div class="screen-footer"><button class="btn btn-primary" onclick="startCapture()">Nuevo proveedor →</button></div>
+</div>
+
+<!-- CARD -->
+<div class="screen with-nav" id="screen-card">
+  <div class="header">
+    <button class="back-btn" onclick="goHome()">←</button>
+    <div class="header-info"><div class="header-step">Paso 1 de 4</div><div class="header-title">Tarjeta de contacto</div></div>
+  </div>
+  <div class="progress-bar"><div class="progress-fill" style="width:25%"></div></div>
+  <div class="screen-body">
+    <div class="photo-zone" id="photo-zone" onclick="document.getElementById('card-input').click()">
+      <div id="photo-placeholder" style="text-align:center;display:flex;flex-direction:column;align-items:center;gap:12px;padding:40px 24px;">
+        <div style="font-size:48px">📇</div>
+        <div style="font-weight:700;font-size:16px;">Fotografiá la tarjeta</div>
+        <div class="photo-hint">Claude extrae los datos automáticamente</div>
+      </div>
+    </div>
+    <input type="file" id="card-input" accept="image/*" capture="environment" onchange="handleCardPhoto(this)" style="display:none">
+    <div id="card-loading" style="display:none;"><div class="loading-state"><div class="spinner"></div><div class="loading-label">Extrayendo datos de la tarjeta...</div></div></div>
+    <div id="card-extracted" style="display:none;"><div class="card"><div class="card-label">Datos extraídos — editables</div><div id="extracted-fields"></div></div></div>
+    <div id="manual-entry" class="card" style="display:none;">
+      <div class="card-label">Entrada manual</div>
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        <div><div class="field-key" style="margin-bottom:6px;">Nombre</div><input class="field-input" id="m-name" placeholder="Nombre del contacto"></div>
+        <div><div class="field-key" style="margin-bottom:6px;">Empresa</div><input class="field-input" id="m-company" placeholder="Nombre de la empresa"></div>
+        <div><div class="field-key" style="margin-bottom:6px;">Cargo</div><input class="field-input" id="m-role" placeholder="Sales Manager, CEO..."></div>
+        <div><div class="field-key" style="margin-bottom:6px;">Email</div><input class="field-input" id="m-email" type="email" placeholder="contacto@empresa.com"></div>
+        <div><div class="field-key" style="margin-bottom:6px;">WhatsApp / WeChat</div><input class="field-input" id="m-wechat" placeholder="ID o número"></div>
+      </div>
+    </div>
+  </div>
+  <div class="screen-footer">
+    <button class="btn btn-primary" id="btn-to-photos" onclick="goToPhotos()">Agregar fotos →</button>
+    <button class="btn btn-ghost" onclick="showManualEntry()">Cargar datos a mano</button>
+  </div>
+</div>
+
+<!-- PHOTOS -->
+<div class="screen with-nav" id="screen-photos">
+  <div class="header">
+    <button class="back-btn" onclick="goTo('screen-card')">←</button>
+    <div class="header-info"><div class="header-step">Paso 2 de 4</div><div class="header-title">Fotos</div></div>
+  </div>
+  <div class="progress-bar"><div class="progress-fill" style="width:50%"></div></div>
+  <div class="screen-body">
+    <div class="section-divider"><div class="section-divider-line"></div><div class="section-divider-label">Fotos del producto</div><div class="section-divider-line"></div></div>
+    <div class="photo-grid" id="product-photo-grid">
+      <div class="photo-add-btn" onclick="document.getElementById('product-input').click()"><div style="font-size:24px">📦</div><div class="photo-add-label">Producto</div></div>
+    </div>
+    <input type="file" id="product-input" accept="image/*" capture="environment" onchange="handleMultiPhoto(this,'product')" style="display:none">
+    <div class="section-divider"><div class="section-divider-line"></div><div class="section-divider-label">Foto del stand</div><div class="section-divider-line"></div></div>
+    <div class="photo-grid" id="stand-photo-grid">
+      <div class="photo-add-btn" onclick="document.getElementById('stand-input').click()"><div style="font-size:24px">🏭</div><div class="photo-add-label">Stand</div></div>
+    </div>
+    <input type="file" id="stand-input" accept="image/*" capture="environment" onchange="handleMultiPhoto(this,'stand')" style="display:none">
+    <div class="card" style="background:rgba(232,255,71,.04);border-color:rgba(232,255,71,.15);">
+      <div style="font-family:var(--font-mono);font-size:11px;color:var(--muted);line-height:1.7;">Hasta 5 fotos de producto y 2 del stand.<br>Se incluyen en el PDF y en el ZIP descargable.</div>
+    </div>
+  </div>
+  <div class="screen-footer">
+    <button class="btn btn-primary" onclick="goTo('screen-conv')">Grabar conversación →</button>
+    <button class="btn btn-ghost" onclick="goTo('screen-conv')">Saltearse fotos</button>
+  </div>
+</div>
+
+<!-- CONVERSATION -->
+<div class="screen with-nav" id="screen-conv">
+  <div class="header">
+    <button class="back-btn" onclick="goTo('screen-photos')">←</button>
+    <div class="header-info"><div class="header-step">Paso 3 de 4</div><div class="header-title">Conversación</div></div>
+  </div>
+  <div class="progress-bar"><div class="progress-fill" style="width:75%"></div></div>
+  <div class="screen-body">
+    <div class="card" style="text-align:center;padding:32px 24px;">
+      <div class="timer" id="conv-timer">0:00</div>
+      <div style="height:16px;"></div>
+      <div class="audio-viz" id="conv-viz"></div>
+      <div style="height:20px;"></div>
+      <div id="conv-status" class="badge badge-muted" style="margin:0 auto;width:fit-content;">Listo para grabar</div>
+    </div>
+    <button class="btn btn-record" id="btn-conv-rec" onclick="toggleConvRecording()"><span id="conv-rec-icon">⏺</span><span id="conv-rec-label">Iniciar grabación</span></button>
+    <div id="conv-loading" style="display:none;"><div class="loading-state"><div class="spinner"></div><div class="loading-label">Transcribiendo conversación...</div></div></div>
+    <div id="conv-transcript-wrap" style="display:none;"><div class="card"><div class="card-label">Transcripción</div><div class="transcript-box" id="conv-transcript-text"></div></div></div>
+  </div>
+  <div class="screen-footer">
+    <button class="btn btn-primary" id="btn-to-notes" onclick="goTo('screen-notes')">Notas privadas →</button>
+    <button class="btn btn-ghost" id="btn-skip-notes" onclick="goTo('screen-notes')">Saltearse → informe</button>
+  </div>
+</div>
+
+<!-- NOTES -->
+<div class="screen with-nav" id="screen-notes">
+  <div class="header">
+    <button class="back-btn" onclick="goTo('screen-conv')">←</button>
+    <div class="header-info"><div class="header-step">Paso 4 de 4 · Opcional</div><div class="header-title">Notas privadas</div></div>
+  </div>
+  <div class="progress-bar"><div class="progress-fill" style="width:90%"></div></div>
+  <div class="screen-body">
+    <div class="card" style="border-color:rgba(71,255,232,.2);">
+      <div class="card-label" style="color:var(--accent2);">Solo para vos — no va al informe del cliente</div>
+      <div style="font-size:14px;color:var(--muted);line-height:1.6;">Impresión personal, nivel de confianza, comparación con otros proveedores.</div>
+    </div>
+    <div class="card" style="text-align:center;padding:32px 24px;">
+      <div class="timer" id="notes-timer">0:00</div>
+      <div style="height:16px;"></div>
+      <div class="audio-viz" id="notes-viz"></div>
+      <div style="height:20px;"></div>
+      <div id="notes-status" class="badge badge-muted" style="margin:0 auto;width:fit-content;">Listo para grabar</div>
+    </div>
+    <button class="btn btn-record" id="btn-notes-rec" onclick="toggleNotesRecording()"><span id="notes-rec-icon">⏺</span><span id="notes-rec-label">Grabar notas privadas</span></button>
+    <div id="notes-loading" style="display:none;"><div class="loading-state"><div class="spinner"></div><div class="loading-label">Transcribiendo notas...</div></div></div>
+    <div id="notes-transcript-wrap" style="display:none;"><div class="card"><div class="card-label">Notas transcriptas</div><div class="transcript-box" id="notes-transcript-text"></div></div></div>
+  </div>
+  <div class="screen-footer">
+    <div class="optional-label">Este paso es opcional</div>
+    <button class="btn btn-primary" onclick="generateReport()">Generar informe →</button>
+  </div>
+</div>
+
+<!-- REPORT -->
+<div class="screen with-nav" id="screen-report">
+  <div class="header">
+    <button class="back-btn" onclick="goHome()">✕</button>
+    <div class="header-info"><div class="header-step">Informe completo</div><div class="header-title" id="report-supplier-name">Proveedor</div></div>
+  </div>
+  <div class="progress-bar"><div class="progress-fill" style="width:100%;background:var(--success);box-shadow:0 0 12px var(--success);"></div></div>
+  <div class="screen-body">
+    <div id="report-loading" style="display:none;"><div class="loading-state" style="padding:60px 32px;"><div class="spinner"></div><div class="loading-label">Analizando información...<br>Generando informe estructurado...</div></div></div>
+    <div id="report-content" style="display:none;flex-direction:column;gap:16px;">
+      <div class="report-section" id="rpt-contact"></div>
+      <div class="report-section" id="rpt-photos"></div>
+      <div class="report-section" id="rpt-product"></div>
+      <div class="report-section" id="rpt-commercial"></div>
+      <div class="report-section" id="rpt-eval"></div>
+      <div class="report-section" id="rpt-private" style="border-color:rgba(71,255,232,.25);"></div>
+      <div class="report-section" id="rpt-summary" style="border-color:rgba(232,255,71,.3);"></div>
+      <div style="padding-bottom:16px;text-align:center;font-family:var(--font-mono);font-size:10px;color:var(--muted);letter-spacing:.1em;">CANTON · CAPTURE · <span id="report-rfq-display">—</span></div>
+    </div>
+  </div>
+  <div class="screen-footer" id="report-footer" style="display:none;">
+    <button class="btn btn-primary" onclick="downloadPDF()">⬇ Descargar PDF (con fotos)</button>
+    <button class="btn btn-secondary" onclick="downloadZIP()">⬇ Descargar ZIP (fotos + txt + json)</button>
+    <button class="btn btn-secondary" id="btn-gdrive" onclick="uploadToDrive()">☁ Guardar en Google Drive</button>
+    <button class="btn btn-ghost" onclick="copyReport()">Copiar al portapapeles</button>
+    <button class="btn btn-ghost" onclick="newCapture()">Nuevo proveedor →</button>
+  </div>
+</div>
+
+</div>
+<script>
+const GOOGLE_CLIENT_ID='61672469231-ec2f4ehmkclce04jf480brduofash7a4.apps.googleusercontent.com';
+const GOOGLE_SCOPES='https://www.googleapis.com/auth/drive.file';
+const state={apiKey:localStorage.getItem('cc_apikey')||'',cardImageB64:null,cardData:{},productPhotos:[],standPhotos:[],convTranscript:'',notesTranscript:'',report:null,rfq:'',gToken:localStorage.getItem('cc_gtoken')||''};
+
+window.addEventListener('load',()=>{
+  if(state.apiKey)document.getElementById('api-key-input').value=state.apiKey;
+  initViz('conv-viz');initViz('notes-viz');
+  document.getElementById('api-key-input').addEventListener('change',e=>{state.apiKey=e.target.value.trim();localStorage.setItem('cc_apikey',state.apiKey);});
+  // Check if returning from Google OAuth redirect
+  const hash=window.location.hash;
+  if(hash.includes('access_token')){
+    const token=hash.match(/access_token=([^&]+)/)?.[1];
+    if(token){
+      state.gToken=token;
+      localStorage.setItem('cc_gtoken',token);
+      window.location.hash='';
+      if(localStorage.getItem('cc_pending_upload')==='true'){
+        localStorage.removeItem('cc_pending_upload');
+        showToast('Google conectado. Tocá "Guardar en Drive" de nuevo.');
+      }
+    }
+  }
+});
+
+function initViz(id){const el=document.getElementById(id);el.innerHTML='';for(let i=0;i<28;i++){const b=document.createElement('div');b.className='bar inactive';b.style.height='4px';el.appendChild(b);}}
+
+let currentScreen='screen-home';
+function goTo(id){const cur=document.getElementById(currentScreen),next=document.getElementById(id);cur.classList.remove('active');cur.classList.add('exit');setTimeout(()=>cur.classList.remove('exit'),400);next.classList.add('active');currentScreen=id;next.scrollTop=0;}
+function goHome(){stopAllRecording();hideNav();const cur=document.getElementById(currentScreen);cur.classList.remove('active');cur.classList.add('exit');setTimeout(()=>cur.classList.remove('exit'),400);const home=document.getElementById('screen-home');home.style.transform='translateX(-40px)';home.classList.add('active');setTimeout(()=>{home.style.transform='';},10);currentScreen='screen-home';}
+
+function startCapture(){const key=document.getElementById('api-key-input').value.trim();if(!key){showToast('Ingresá tu API key primero');return;}state.apiKey=key;localStorage.setItem('cc_apikey',key);const n=document.getElementById('rfq-base').value.trim();state.rfq=n?`RFQ-2026-${n.padStart(3,'0')}`:'';resetCapture();goTo('screen-card');showNav();updateNav('screen-card');}
+
+function resetCapture(){
+  state.cardImageB64=null;state.cardData={};state.productPhotos=[];state.standPhotos=[];state.convTranscript='';state.notesTranscript='';state.report=null;
+  document.getElementById('photo-placeholder').style.display='';
+  const pz=document.getElementById('photo-zone');pz.classList.remove('has-image');pz.querySelector('img')?.remove();pz.querySelector('.photo-zone-overlay')?.remove();
+  ['card-extracted','card-loading','manual-entry'].forEach(id=>document.getElementById(id).style.display='none');
+  document.getElementById('btn-to-photos').disabled=true;document.getElementById('card-input').value='';
+  renderPhotoGrid('product');renderPhotoGrid('stand');
+  ['product-input','stand-input'].forEach(id=>document.getElementById(id).value='');
+  resetRecording('conv');document.getElementById('conv-transcript-wrap').style.display='none';
+  document.getElementById('btn-to-notes').disabled=true;document.getElementById('btn-skip-notes').disabled=true;
+  resetRecording('notes');document.getElementById('notes-transcript-wrap').style.display='none';
+}
+function newCapture(){resetCapture();goTo('screen-card');showNav();updateNav('screen-card');}
+
+function handleCardPhoto(input){
+  const file=input.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    const dataUrl=e.target.result;state.cardImageB64=dataUrl.split(',')[1];
+    const pz=document.getElementById('photo-zone');pz.classList.add('has-image');
+    document.getElementById('photo-placeholder').style.display='none';
+    let img=pz.querySelector('img');if(!img){img=document.createElement('img');pz.appendChild(img);}img.src=dataUrl;
+    let ov=pz.querySelector('.photo-zone-overlay');
+    if(!ov){ov=document.createElement('div');ov.className='photo-zone-overlay';ov.innerHTML='<div style="font-size:24px">📷</div><div style="font-family:var(--font-mono);font-size:11px;color:white;">Toca para cambiar</div>';pz.appendChild(ov);}
+    extractCardData();
+  };reader.readAsDataURL(file);
+}
+
+async function extractCardData(){
+  document.getElementById('card-loading').style.display='flex';document.getElementById('card-extracted').style.display='none';
+  try{
+    const ocrPrompt='Analiza esta tarjeta de presentacion de un proveedor chino. Extrae todos los datos visibles. Responde SOLO con JSON valido con estas claves exactas (deja "" si no hay dato): {"nombre":"","empresa":"","cargo":"","email":"","telefono":"","wechat":"","web":"","direccion":"","producto_principal":""}. Solo JSON, sin explicaciones, sin markdown.';
+    const resp=await callClaude([{role:'user',content:[{type:'image',source:{type:'base64',media_type:'image/jpeg',data:state.cardImageB64}},{type:'text',text:ocrPrompt}]}],600);
+    let json;
+    try{
+      const s=resp.trim().replace(/```json|```/g,'');
+      const fi=s.indexOf('{');const li=s.lastIndexOf('}');
+      json=JSON.parse(fi>=0&&li>fi?s.slice(fi,li+1):s);
+    }catch{json={};}
+    state.cardData=json;renderExtractedFields(json);
+    document.getElementById('card-extracted').style.display='block';document.getElementById('btn-to-photos').disabled=false;
+  }catch(e){showToast('Error al leer la tarjeta. Cargá los datos a mano.');showManualEntry();}
+  document.getElementById('card-loading').style.display='none';
+}
+
+function renderExtractedFields(data){
+  const fields=[['nombre','Nombre'],['empresa','Empresa'],['cargo','Cargo'],['email','Email'],['telefono','Teléfono'],['wechat','WeChat / WhatsApp'],['web','Web'],['producto_principal','Producto principal']];
+  const c=document.getElementById('extracted-fields');c.innerHTML='';
+  fields.forEach(([key,label])=>{const row=document.createElement('div');row.className='field-row';row.innerHTML=`<div class="field-key">${label}</div><input class="field-input" value="${esc(data[key]||'')}" placeholder="${data[key]?'':'No detectado'}" oninput="state.cardData['${key}']=this.value">`;c.appendChild(row);});
+}
+function showManualEntry(){document.getElementById('manual-entry').style.display='block';document.getElementById('btn-to-photos').disabled=false;}
+function goToPhotos(){
+  if(!Object.keys(state.cardData).length)state.cardData={nombre:document.getElementById('m-name').value,empresa:document.getElementById('m-company').value,cargo:document.getElementById('m-role').value,email:document.getElementById('m-email').value,wechat:document.getElementById('m-wechat').value,telefono:'',web:'',direccion:'',producto_principal:''};
+  goTo('screen-photos');
+}
+
+function handleMultiPhoto(input,type){
+  const arr=type==='product'?state.productPhotos:state.standPhotos;
+  const max=type==='product'?5:2;
+  const files=Array.from(input.files).slice(0,max-arr.length);
+  let done=0;
+  files.forEach(file=>{const reader=new FileReader();reader.onload=e=>{const dataUrl=e.target.result;arr.push({b64:dataUrl.split(',')[1],dataUrl,name:`${type}-${Date.now()}-${arr.length}.jpg`});done++;if(done===files.length)renderPhotoGrid(type);};reader.readAsDataURL(file);});
+  input.value='';
+}
+
+function renderPhotoGrid(type){
+  const arr=type==='product'?state.productPhotos:state.standPhotos;
+  const max=type==='product'?5:2;
+  const grid=document.getElementById(`${type}-photo-grid`);grid.innerHTML='';
+  arr.forEach((photo,i)=>{const thumb=document.createElement('div');thumb.className='photo-thumb';thumb.innerHTML=`<img src="${photo.dataUrl}"><div class="remove-btn" onclick="removePhoto('${type}',${i})">✕</div>`;grid.appendChild(thumb);});
+  if(arr.length<max){const add=document.createElement('div');add.className='photo-add-btn';add.onclick=()=>document.getElementById(`${type}-input`).click();add.innerHTML=`<div style="font-size:20px">${type==='product'?'📦':'🏭'}</div><div class="photo-add-label">${type==='product'?'Producto':'Stand'}</div>`;grid.appendChild(add);}
+}
+function removePhoto(type,idx){(type==='product'?state.productPhotos:state.standPhotos).splice(idx,1);renderPhotoGrid(type);}
+
+const recState={conv:{recorder:null,chunks:[],timer:null,elapsed:0,recording:false,blob:null},notes:{recorder:null,chunks:[],timer:null,elapsed:0,recording:false,blob:null}};
+function stopAllRecording(){['conv','notes'].forEach(t=>{if(recState[t].recording)stopRecording(t);});}
+async function toggleConvRecording(){await toggleRec('conv');}
+async function toggleNotesRecording(){await toggleRec('notes');}
+async function toggleRec(type){recState[type].recording?stopRecording(type):await startRecording(type);}
+
+async function startRecording(type){
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    const mime=getSupportedMime();const recorder=new MediaRecorder(stream,{mimeType:mime});
+    Object.assign(recState[type],{recorder,chunks:[],elapsed:0,recording:true});
+    recorder.ondataavailable=e=>{if(e.data.size>0)recState[type].chunks.push(e.data);};
+    recorder.onstop=()=>{stream.getTracks().forEach(t=>t.stop());const blob=new Blob(recState[type].chunks,{type:mime});recState[type].blob=blob;transcribeAudio(type,blob);};
+    recorder.start(100);
+    document.getElementById(`btn-${type}-rec`).classList.add('recording');
+    document.getElementById(`${type}-rec-icon`).textContent='⏹';document.getElementById(`${type}-rec-label`).textContent='Detener grabación';
+    setStatus(type,'recording','<div class="rec-dot"></div> Grabando');
+    recState[type].timer=setInterval(()=>{recState[type].elapsed++;document.getElementById(`${type}-timer`).textContent=fmtTime(recState[type].elapsed);document.getElementById(`${type}-timer`).className='timer recording';animBars(type);},1000);
+  }catch(e){showToast('No se pudo acceder al micrófono');}
+}
+function stopRecording(type){
+  if(!recState[type].recording)return;recState[type].recording=false;clearInterval(recState[type].timer);recState[type].recorder?.stop();
+  document.getElementById(`btn-${type}-rec`).classList.remove('recording');document.getElementById(`${type}-rec-icon`).textContent='⏺';document.getElementById(`${type}-rec-label`).textContent='Grabar de nuevo';
+  setStatus(type,'warn','Procesando...');document.getElementById(`${type}-timer`).className='timer';flatBars(type);
+}
+function resetRecording(type){
+  clearInterval(recState[type].timer);recState[type].recording=false;recState[type].elapsed=0;recState[type].blob=null;recState[type].chunks=[];
+  document.getElementById(`${type}-timer`).textContent='0:00';document.getElementById(`${type}-timer`).className='timer';
+  document.getElementById(`btn-${type}-rec`).classList.remove('recording');document.getElementById(`${type}-rec-icon`).textContent='⏺';
+  document.getElementById(`${type}-rec-label`).textContent=type==='conv'?'Iniciar grabación':'Grabar notas privadas';
+  flatBars(type);setStatus(type,'muted','Listo para grabar');
+}
+function setStatus(type,s,html){
+  const el=document.getElementById(`${type}-status`);
+  const map={recording:'background:rgba(255,71,71,.1);color:var(--danger);border:1px solid rgba(255,71,71,.3)',warn:'background:rgba(232,255,71,.08);color:var(--accent);border:1px solid rgba(232,255,71,.2)',muted:'background:var(--surface2);color:var(--muted);border:1px solid var(--border)',success:'background:rgba(71,255,138,.1);color:var(--success);border:1px solid rgba(71,255,138,.25)'};
+  el.className='badge';el.style.cssText=`margin:0 auto;width:fit-content;${map[s]||''}`;el.innerHTML=html;
+}
+function getSupportedMime(){return['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/mp4'].find(t=>MediaRecorder.isTypeSupported(t))||'audio/webm';}
+function animBars(type){document.getElementById(`${type}-viz`).querySelectorAll('.bar').forEach(b=>{b.style.height=Math.max(4,Math.random()*44)+'px';b.className='bar';});}
+function flatBars(type){document.getElementById(`${type}-viz`).querySelectorAll('.bar').forEach(b=>{b.style.height='4px';b.className='bar inactive';});}
+
+async function transcribeAudio(type,blob){
+  document.getElementById(`${type}-loading`).style.display='flex';document.getElementById(`${type}-transcript-wrap`).style.display='none';
+  try{
+    let oaiKey=localStorage.getItem('cc_oaikey');
+    if(!oaiKey){const k=prompt('Para transcribir audio necesitás tu OpenAI API key (se guarda en el teléfono):');if(k?.trim()){localStorage.setItem('cc_oaikey',k.trim());oaiKey=k.trim();}else throw new Error('No key');}
+    const fd=new FormData();fd.append('file',blob,'audio.webm');fd.append('model','whisper-1');fd.append('language','es');
+    const r=await fetch('https://api.openai.com/v1/audio/transcriptions',{method:'POST',headers:{Authorization:`Bearer ${oaiKey}`},body:fd});
+    if(!r.ok)throw new Error('Whisper error');
+    const data=await r.json();const transcript=data.text||'';
+    if(type==='conv'){state.convTranscript=transcript;document.getElementById('btn-to-notes').disabled=false;document.getElementById('btn-skip-notes').disabled=false;}
+    else state.notesTranscript=transcript;
+    document.getElementById(`${type}-transcript-text`).textContent=transcript;document.getElementById(`${type}-transcript-wrap`).style.display='block';setStatus(type,'success','✓ Transcripto');updateDots();
+    }catch(e){
+      const em=(e&&e.message)||String(e);
+      showToast('Error: '+em.slice(0,50));
+      setStatus(type,'recording','Error — intentá de nuevo');
+    }
+  document.getElementById(`${type}-loading`).style.display='none';
+}
+
+async function generateReport(){updateNav('screen-report');
+  goTo('screen-report');document.getElementById('report-loading').style.display='flex';document.getElementById('report-content').style.display='none';document.getElementById('report-footer').style.display='none';
+  try{
+    const cardStr = Object.keys(state.cardData).length ? JSON.stringify(state.cardData) : '(sin datos)';
+    const prompt = [
+      'Analiza la informacion de este proveedor de la Feria de Canton.',
+      'TARJETA: ' + cardStr,
+      'FOTOS PRODUCTO: ' + state.productPhotos.length,
+      'FOTOS STAND: ' + state.standPhotos.length,
+      'CONVERSACION: ' + (state.convTranscript || 'No disponible'),
+      'NOTAS PRIVADAS: ' + (state.notesTranscript || 'No disponible'),
+      'RFQ: ' + (state.rfq || 'Sin asignar'),
+      'Responde SOLO con JSON valido sin markdown con esta estructura exacta:',
+      '{"contacto":{"nombre":"","empresa":"","cargo":"","email":"","telefono":"","wechat":"","web":""},"producto":{"descripcion":"","categoria":"","especificaciones":"","certificaciones":"","variantes":""},"comercial":{"precio_fob":"","moq":"","incoterm":"","lead_time":"","muestra_disponible":"","costo_muestra":"","terminos_pago":""},"evaluacion":{"score":0,"fortalezas":"","debilidades":"","fit_clientes":"","proximos_pasos":""},"privado":{"impresion_personal":"","nivel_confianza":"","observaciones_internas":""},"resumen_ejecutivo":""}'
+    ].join(' ');
+    const resp=await callClaude([{role:'user',content:prompt}],1000);
+    let data;
+    try{
+      const stripped=resp.trim().replace(/```json|```/g,'');const firstBrace=stripped.indexOf('{');const lastBrace=stripped.lastIndexOf('}');const cleaned=firstBrace>=0&&lastBrace>firstBrace?stripped.slice(firstBrace,lastBrace+1):stripped;
+      data=JSON.parse(cleaned);
+    }catch(parseErr){
+      throw new Error('RESP: ' + resp.slice(0,200));
+    }
+    state.report=data;renderReport(data);
+  }catch(e){
+    document.getElementById('report-loading').style.display='none';
+    const msg = (e&&e.message) ? e.message : String(e);
+    const keyInfo = state.apiKey ? state.apiKey.slice(0,12)+'...' : 'NO HAY KEY';
+    const errHtml = '<div style="background:rgba(255,71,71,.1);border:1px solid rgba(255,71,71,.3);border-radius:12px;padding:20px;font-family:var(--font-mono);font-size:12px;color:var(--danger);line-height:1.8;word-break:break-all;"><div style="font-size:10px;letter-spacing:.15em;margin-bottom:12px;color:var(--muted);">ERROR</div><div>'+msg+'</div><br><div style="color:var(--muted);">Key: '+keyInfo+'</div></div>';
+    document.getElementById('report-content').style.display='flex';
+    document.getElementById('report-content').innerHTML=errHtml;
+    document.getElementById('report-footer').style.display='flex';
+  }
+}
+
+function renderReport(data){
+  document.getElementById('report-loading').style.display='none';
+  const rc=document.getElementById('report-content');rc.style.display='flex';
+  document.getElementById('report-footer').style.display='flex';
+  document.getElementById('report-supplier-name').textContent=(data.contacto&&data.contacto.empresa)||(data.contacto&&data.contacto.nombre)||'Proveedor';
+  document.getElementById('report-rfq-display').textContent=state.rfq||'—';
+  const c=data.contacto||{},p=data.producto||{},com=data.comercial||{},ev=data.evaluacion||{},priv=data.privado||{};
+  rptSection('rpt-contact','Contacto',[['Nombre',c.nombre],['Empresa',c.empresa],['Cargo',c.cargo],['Email',c.email],['Teléfono',c.telefono],['WeChat',c.wechat],['Web',c.web]]);
+  const allPh=[...state.productPhotos,...state.standPhotos];
+  const phEl=document.getElementById('rpt-photos');
+  if(allPh.length>0){phEl.innerHTML=`<div class="report-section-header">Fotos (${state.productPhotos.length} producto · ${state.standPhotos.length} stand)</div><div class="report-section-body"><div class="report-photo-grid">${allPh.map(ph=>`<div class="report-photo-thumb"><img src="${ph.dataUrl}"></div>`).join('')}</div></div>`;}else{phEl.style.display='none';}
+  rptSection('rpt-product','Producto',[['Descripción',p.descripcion],['Categoría',p.categoria],['Especificaciones',p.especificaciones],['Certificaciones',p.certificaciones],['Variantes',p.variantes]]);
+  rptSection('rpt-commercial','Datos comerciales',[['Precio FOB',com.precio_fob,true],['MOQ',com.moq,true],['Incoterm',com.incoterm],['Lead time',com.lead_time],['Muestra',com.muestra_disponible],['Costo muestra',com.costo_muestra],['Pago',com.terminos_pago]]);
+  const sc=Math.min(5,Math.max(0,parseInt(ev.score)||0));
+  const safeStars='★'.repeat(Math.min(5,Math.max(0,sc)))+'☆'.repeat(Math.max(0,5-Math.min(5,Math.max(0,sc))));
+  const evalHTML='<div class="report-section-header">Evaluación</div><div class="report-section-body"><div class="report-field"><div class="report-field-key">Score</div><div class="report-field-val highlight"><span class="score-stars">'+safeStars+'</span> '+sc+'/5</div></div>'+rptFieldsHTML([['Fortalezas',ev.fortalezas],['Debilidades',ev.debilidades],['Fit clientes',ev.fit_clientes],['Próximos pasos',ev.proximos_pasos]])+'</div>';
+  document.getElementById('rpt-eval').innerHTML=evalHTML;
+  document.getElementById('rpt-private').innerHTML=`<div class="report-section-header" style="color:var(--accent2);">Notas privadas</div><div class="report-section-body">${rptFieldsHTML([['Impresión',priv.impresion_personal],['Confianza',priv.nivel_confianza],['Observaciones',priv.observaciones_internas]])}</div>`;
+  document.getElementById('rpt-summary').innerHTML=`<div class="report-section-header" style="color:var(--accent);">Resumen ejecutivo</div><div class="report-section-body"><div style="font-size:14px;line-height:1.7;color:var(--text);">${esc(data.resumen_ejecutivo||'—')}</div></div>`;
+}
+function rptSection(id,title,fields){document.getElementById(id).innerHTML=`<div class="report-section-header">${title}</div><div class="report-section-body">${rptFieldsHTML(fields)}</div>`;}
+function rptFieldsHTML(fields){return fields.map(([k,v,hl])=>{const e=!v;const cls=hl&&!e?'report-field-val highlight':e?'report-field-val empty':'report-field-val';return`<div class="report-field"><div class="report-field-key">${k}</div><div class="${cls}">${esc(e?'—':v)}</div></div>`;}).join('');}
+
+function buildTxt(){
+  if(!state.report)return'';
+  const d=state.report,c=d.contacto||{},p=d.producto||{},com=d.comercial||{},ev=d.evaluacion||{},priv=d.privado||{},sc=parseInt(ev.score)||0;
+  return`CANTON SUPPLIER REPORT — ${state.rfq||'Sin RFQ'}
+Generado: ${new Date().toLocaleString('es-AR')}
+${'═'.repeat(50)}
+
+CONTACTO
+Empresa:    ${c.empresa||'—'}
+Nombre:     ${c.nombre||'—'}
+Cargo:      ${c.cargo||'—'}
+Email:      ${c.email||'—'}
+Teléfono:   ${c.telefono||'—'}
+WeChat:     ${c.wechat||'—'}
+Web:        ${c.web||'—'}
+
+PRODUCTO
+Descripción:      ${p.descripcion||'—'}
+Categoría:        ${p.categoria||'—'}
+Especificaciones: ${p.especificaciones||'—'}
+Certificaciones:  ${p.certificaciones||'—'}
+Variantes:        ${p.variantes||'—'}
+Fotos producto:   ${state.productPhotos.length} (ver ZIP/PDF)
+Fotos stand:      ${state.standPhotos.length} (ver ZIP/PDF)
+
+DATOS COMERCIALES
+Precio FOB:    ${com.precio_fob||'—'}
+MOQ:           ${com.moq||'—'}
+Incoterm:      ${com.incoterm||'—'}
+Lead time:     ${com.lead_time||'—'}
+Muestra:       ${com.muestra_disponible||'—'} — Costo: ${com.costo_muestra||'—'}
+Pago:          ${com.terminos_pago||'—'}
+
+EVALUACIÓN
+Score: ${'★'.repeat(Math.min(5,Math.max(0,sc)))+'☆'.repeat(Math.max(0,5-Math.min(5,Math.max(0,sc))))} (${sc}/5)
+Fortalezas:     ${ev.fortalezas||'—'}
+Debilidades:    ${ev.debilidades||'—'}
+Fit clientes:   ${ev.fit_clientes||'—'}
+Próximos pasos: ${ev.proximos_pasos||'—'}
+
+NOTAS PRIVADAS (confidencial)
+Impresión:    ${priv.impresion_personal||'—'}
+Confianza:    ${priv.nivel_confianza||'—'}
+Obs:          ${priv.observaciones_internas||'—'}
+
+${'─'.repeat(50)}
+RESUMEN EJECUTIVO
+${d.resumen_ejecutivo||'—'}
+
+${'─'.repeat(50)}
+TRANSCRIPCIÓN — CONVERSACIÓN
+${state.convTranscript||'(No disponible)'}
+
+TRANSCRIPCIÓN — NOTAS PRIVADAS
+${state.notesTranscript||'(No disponible)'}
+${'═'.repeat(50)}`;
+}
+
+function buildFilename(ext){
+  const emp=(state.report?.contacto?.empresa||'proveedor').toLowerCase().replace(/[^a-z0-9]/g,'-').replace(/-+/g,'-').slice(0,30);
+  const fecha=new Date().toISOString().slice(0,10);
+  const psr=state.rfq?state.rfq.toLowerCase()+'-':'';
+  return`${psr}${emp}-${fecha}.${ext}`;
+}
+
+async function downloadPDF(){
+  showToast('Generando PDF...');
+  const d=state.report||{},c=d.contacto||{},p=d.producto||{},com=d.comercial||{},ev=d.evaluacion||{},priv=d.privado||{};
+  const sc=Math.min(5,Math.max(0,parseInt(ev.score)||0));const stars='★'.repeat(Math.min(5,Math.max(0,sc)))+'☆'.repeat(Math.max(0,5-Math.min(5,Math.max(0,sc)))),fecha=new Date().toLocaleString('es-AR');
+  const prodImgs=state.productPhotos.map(ph=>`<img src="${ph.dataUrl}" style="width:30%;border-radius:6px;object-fit:cover;aspect-ratio:1;">`).join('');
+  const standImgs=state.standPhotos.map(ph=>`<img src="${ph.dataUrl}" style="width:45%;border-radius:6px;object-fit:cover;aspect-ratio:1;">`).join('');
+  const cardImg=state.cardImageB64?`<img src="data:image/jpeg;base64,${state.cardImageB64}" style="max-height:110px;border-radius:6px;object-fit:contain;margin-bottom:20px;">`:'';
+  function prow(k,v,ac){const e=!v;return`<div class="row"><div class="key">${k}</div><div class="val${ac&&!e?' ac':''}">${esc(e?'—':v)}</div></div>`;}
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+body{font-family:'Helvetica Neue',Arial,sans-serif;color:#1a1a2e;margin:0;padding:0;font-size:13px;line-height:1.5;}
+.cover{background:#0a0a0f;color:#f0f0f8;padding:48px 40px 40px;page-break-after:always;}
+.cover-tag{font-size:10px;letter-spacing:.2em;color:#e8ff47;text-transform:uppercase;margin-bottom:16px;}
+.cover-title{font-size:36px;font-weight:800;margin-bottom:4px;}
+.cover-sub{font-size:16px;color:#6b6b80;margin-bottom:32px;}
+.cover-meta{font-size:11px;color:#6b6b80;font-family:monospace;}
+.cover-psr{display:inline-block;background:rgba(232,255,71,.1);border:1px solid rgba(232,255,71,.3);padding:8px 16px;border-radius:6px;color:#e8ff47;font-family:monospace;font-size:13px;margin-top:16px;}
+.page{padding:32px 40px;}
+.sec{margin-bottom:22px;border:1px solid #e0e0f0;border-radius:10px;overflow:hidden;}
+.sec-head{background:#f5f5ff;padding:10px 16px;font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:#534AB7;font-weight:600;border-bottom:1px solid #e0e0f0;}
+.sec-body{padding:14px 16px;}
+.row{display:flex;padding:6px 0;border-bottom:1px solid #f0f0f8;}
+.row:last-child{border-bottom:none;}
+.key{color:#888;font-size:11px;width:130px;flex-shrink:0;padding-top:2px;}
+.val{font-weight:600;font-size:13px;flex:1;}
+.val.ac{color:#534AB7;}
+.score{font-size:22px;letter-spacing:3px;color:#E67E22;}
+.photo-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;}
+.summary{background:#fffdf0;border:1px solid #f5d06e;border-radius:10px;padding:16px;font-size:13px;line-height:1.7;margin-bottom:22px;}
+.private{background:#f0fffd;border:1px solid #a0e0d8;border-radius:10px;padding:16px;margin-bottom:22px;}
+.footer{text-align:center;font-size:10px;color:#aaa;font-family:monospace;padding:16px;border-top:1px solid #f0f0f0;}
+</style></head><body>
+<div class="cover">
+  <div class="cover-tag">CantonMaster · Supplier Report</div>
+  <div class="cover-title">${esc(c.empresa||'Proveedor')}</div>
+  <div class="cover-sub">${esc(c.nombre||'')}${c.cargo?' · '+esc(c.cargo):''}</div>
+  ${state.rfq?`<div class="cover-psr">${esc(state.rfq)}</div>`:''}
+  <br><br><div class="cover-meta">Generado: ${fecha}</div>
+</div>
+<div class="page">
+  ${cardImg}
+  <div class="sec"><div class="sec-head">Contacto</div><div class="sec-body">${prow('Empresa',c.empresa)}${prow('Nombre',c.nombre)}${prow('Cargo',c.cargo)}${prow('Email',c.email)}${prow('Teléfono',c.telefono)}${prow('WeChat',c.wechat)}${prow('Web',c.web)}</div></div>
+  ${prodImgs||standImgs?`<div class="sec"><div class="sec-head">Fotos (${state.productPhotos.length} producto · ${state.standPhotos.length} stand)</div><div class="sec-body"><div class="photo-row">${prodImgs}${standImgs}</div></div></div>`:''}
+  <div class="sec"><div class="sec-head">Producto</div><div class="sec-body">${prow('Descripción',p.descripcion)}${prow('Categoría',p.categoria)}${prow('Especificaciones',p.especificaciones)}${prow('Certificaciones',p.certificaciones)}${prow('Variantes',p.variantes)}</div></div>
+  <div class="sec"><div class="sec-head">Datos comerciales</div><div class="sec-body">${prow('Precio FOB',com.precio_fob,1)}${prow('MOQ',com.moq,1)}${prow('Incoterm',com.incoterm)}${prow('Lead time',com.lead_time)}${prow('Muestra',com.muestra_disponible)}${prow('Costo muestra',com.costo_muestra)}${prow('Pago',com.terminos_pago)}</div></div>
+  <div class="sec"><div class="sec-head">Evaluación</div><div class="sec-body"><div class="row"><div class="key">Score</div><div class="val"><span class="score">${stars}</span> ${sc}/5</div></div>${prow('Fortalezas',ev.fortalezas)}${prow('Debilidades',ev.debilidades)}${prow('Fit clientes',ev.fit_clientes)}${prow('Próximos pasos',ev.proximos_pasos)}</div></div>
+  <div class="summary"><strong>Resumen ejecutivo</strong><br><br>${esc(d.resumen_ejecutivo||'—')}</div>
+  <div class="private"><strong style="color:#0f6e56;">Notas privadas (confidencial)</strong><br><br><strong>Impresión:</strong> ${esc(priv.impresion_personal||'—')}<br><strong>Confianza:</strong> ${esc(priv.nivel_confianza||'—')}<br><strong>Observaciones:</strong> ${esc(priv.observaciones_internas||'—')}</div>
+  <div class="footer">CantonMaster · ${esc(state.rfq||'')} · ${fecha}</div>
+</div></body></html>`;
+  const win=window.open('','_blank');win.document.write(html);win.document.close();
+  win.onload=()=>{setTimeout(()=>win.print(),600);};
+  showToast('Abrí "Imprimir" y elegí "Guardar como PDF"');
+}
+
+async function downloadZIP(){
+  if(typeof JSZip==='undefined'){showToast('Error: JSZip no cargó. Recargá la app.');return;}
+  if(!window.JSZip){showToast('Esperá un momento...');await new Promise(r=>setTimeout(r,1500));}
+  showToast('Generando ZIP...');
+  const zip=new JSZip();
+  const folder=buildFilename('').replace(/\.$/,'');
+  const f=zip.folder(folder);
+  f.file('informe.txt',buildTxt());
+  f.file('datos.json',JSON.stringify({rfq:state.rfq,generado:new Date().toISOString(),...state.report,transcripciones:{conversacion:state.convTranscript,notas_privadas:state.notesTranscript}},null,2));
+  if(state.cardImageB64)f.file('tarjeta.jpg',state.cardImageB64,{base64:true});
+  const pf=f.folder('fotos-producto');state.productPhotos.forEach((ph,i)=>pf.file(`producto-${i+1}.jpg`,ph.b64,{base64:true}));
+  const sf=f.folder('fotos-stand');state.standPhotos.forEach((ph,i)=>sf.file(`stand-${i+1}.jpg`,ph.b64,{base64:true}));
+  const blob=await zip.generateAsync({type:'blob'});
+  const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=buildFilename('zip');document.body.appendChild(a);a.click();
+  setTimeout(()=>{URL.revokeObjectURL(url);a.remove();},1000);
+  showToast(`ZIP descargado: ${buildFilename('zip')}`);
+}
+
+function copyReport(){navigator.clipboard.writeText(buildTxt()).then(()=>showToast('✓ Copiado al portapapeles'));}
+
+// ══ GOOGLE DRIVE ══
+function googleLogin(){
+  if(state.gToken)return Promise.resolve(state.gToken);
+  // Save pending upload flag and redirect to Google OAuth
+  localStorage.setItem('cc_pending_upload','true');
+  window.location.href='https://accounts.google.com/o/oauth2/v2/auth?'+
+    'client_id='+GOOGLE_CLIENT_ID+
+    '&redirect_uri='+encodeURIComponent('https://matiasrohr.github.io/cantonmaster')+
+    '&response_type=token'+
+    '&scope='+encodeURIComponent(GOOGLE_SCOPES)+
+    '&prompt=consent';
+  return new Promise(()=>{}); // never resolves — page redirects
+}
+
+async function getOrCreateFolder(token){
+  // Search for CantonMaster folder
+  const search=await fetch(
+    "https://www.googleapis.com/drive/v3/files?q=name='CantonMaster' and mimeType='application/vnd.google-apps.folder' and trashed=false",
+    {headers:{Authorization:'Bearer '+token}}
+  );
+  const searchData=await search.json();
+  if(searchData.files&&searchData.files.length>0){
+    return searchData.files[0].id;
+  }
+  // Create folder
+  const create=await fetch('https://www.googleapis.com/drive/v3/files',{
+    method:'POST',
+    headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
+    body:JSON.stringify({name:'CantonMaster',mimeType:'application/vnd.google-apps.folder'})
+  });
+  const folder=await create.json();
+  return folder.id;
+}
+
+async function uploadFileToDrive(token,folderId,filename,content,mimeType){
+  const meta={name:filename,parents:[folderId]};
+  const form=new FormData();
+  form.append('metadata',new Blob([JSON.stringify(meta)],{type:'application/json'}));
+  form.append('file',new Blob([content],{type:mimeType}));
+  const r=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',{
+    method:'POST',
+    headers:{Authorization:'Bearer '+token},
+    body:form
+  });
+  return r.json();
+}
+
+async function uploadToDrive(){
+  const btn=document.getElementById('btn-gdrive');
+  btn.disabled=true;
+  btn.textContent='Conectando con Google...';
+  try{
+    const token=await googleLogin();
+    btn.textContent='Creando carpeta...';
+    const folderId=await getOrCreateFolder(token);
+    const filename=buildFilename('');
+    
+    // Upload TXT
+    btn.textContent='Subiendo informe...';
+    await uploadFileToDrive(token,folderId,filename+'txt',buildTxt(),'text/plain');
+    
+    // Upload JSON
+    await uploadFileToDrive(token,folderId,filename+'json',
+      JSON.stringify({rfq:state.rfq,generado:new Date().toISOString(),...state.report,
+        transcripciones:{conversacion:state.convTranscript,notas_privadas:state.notesTranscript}},null,2),
+      'application/json');
+
+    btn.textContent='☁ Guardado en Drive ✓';
+    btn.style.background='var(--success)';
+    btn.style.color='#0a0a0f';
+    showToast('✓ Guardado en carpeta CantonMaster de Google Drive');
+  }catch(e){
+    btn.disabled=false;
+    btn.textContent='☁ Guardar en Google Drive';
+    if(e.message&&e.message.includes('401')){
+      state.gToken='';localStorage.removeItem('cc_gtoken');
+    }
+    showToast('Error: '+(e.message||String(e)).slice(0,60));
+  }
+}
+
+async function callClaude(messages,max_tokens=1000){
+  const r=await fetch('https://cantonmaster-proxy.matirohr.workers.dev',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':state.apiKey,'anthropic-version':'2023-06-01'},body:JSON.stringify({model:'claude-opus-4-5-20251101',max_tokens,messages})});
+  const rawText = await r.text();
+  if(!r.ok){throw new Error('HTTP '+r.status+': '+rawText.slice(0,150));}
+  let data;
+  try{ data = JSON.parse(rawText); }
+  catch(e){ throw new Error('JSON invalido: '+rawText.slice(0,150)); }
+  const text = data.content?.[0]?.text||'';
+  if(!text){ throw new Error('Sin content. Keys: '+Object.keys(data).join(',')+' | '+rawText.slice(0,100)); }
+  return text;
+}
+
+function navTo(id){
+  // show nav on all working screens
+  goTo(id);
+  updateNav(id);
+}
+
+function updateNav(id){
+  const tabs={
+    'screen-card':'nav-card',
+    'screen-photos':'nav-photos',
+    'screen-conv':'nav-conv',
+    'screen-notes':'nav-notes',
+    'screen-report':'nav-report'
+  };
+  document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
+  if(tabs[id])document.getElementById(tabs[id])?.classList.add('active');
+}
+
+function updateDots(){
+  document.getElementById('dot-card').classList.toggle('show', !!state.cardImageB64 || !!Object.keys(state.cardData).length);
+  document.getElementById('dot-photos').classList.toggle('show', state.productPhotos.length>0||state.standPhotos.length>0);
+  document.getElementById('dot-conv').classList.toggle('show', !!state.convTranscript);
+  document.getElementById('dot-notes').classList.toggle('show', !!state.notesTranscript);
+}
+
+function showNav(){
+  document.getElementById('bottom-nav').classList.add('visible');
+}
+
+function hideNav(){
+  document.getElementById('bottom-nav').classList.remove('visible');
+}
+
+function fmtTime(s){return`${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;}
+function esc(str){return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+let toastTimer;
+function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),3500);}
+</script>
+</body>
+</html>
