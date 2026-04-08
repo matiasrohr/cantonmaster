@@ -339,6 +339,7 @@
     <button class="btn btn-primary" onclick="downloadPDF()">⬇ Descargar PDF (con fotos)</button>
     <button class="btn btn-secondary" onclick="downloadZIP()">⬇ Descargar ZIP (fotos + txt + json)</button>
     <button class="btn btn-secondary" id="btn-gdrive" onclick="uploadToDrive()">☁ Guardar en Google Drive</button>
+    <button class="btn btn-secondary" onclick="copySupplierJSON()">📋 Copiar JSON para DB</button>
     <button class="btn btn-ghost" onclick="copyReport()">Copiar al portapapeles</button>
     <button class="btn btn-ghost" onclick="newCapture()">Nuevo proveedor →</button>
   </div>
@@ -703,6 +704,7 @@ async function downloadZIP(){
   const f=zip.folder(folder);
   f.file('informe.txt',buildTxt());
   f.file('datos.json',JSON.stringify({rfq:state.rfq,generado:new Date().toISOString(),...state.report,transcripciones:{conversacion:state.convTranscript,notas_privadas:state.notesTranscript}},null,2));
+  const _sjson=buildSupplierJSON();if(_sjson)f.file(buildFilename('json').replace(/json$/,'supplier-data.json'),JSON.stringify(_sjson,null,2));
   if(state.cardImageB64)f.file('tarjeta.jpg',state.cardImageB64,{base64:true});
   const pf=f.folder('fotos-producto');state.productPhotos.forEach((ph,i)=>pf.file(`producto-${i+1}.jpg`,ph.b64,{base64:true}));
   const sf=f.folder('fotos-stand');state.standPhotos.forEach((ph,i)=>sf.file(`stand-${i+1}.jpg`,ph.b64,{base64:true}));
@@ -710,6 +712,45 @@ async function downloadZIP(){
   const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=buildFilename('zip');document.body.appendChild(a);a.click();
   setTimeout(()=>{URL.revokeObjectURL(url);a.remove();},1000);
   showToast(`ZIP descargado: ${buildFilename('zip')}`);
+}
+
+function buildSupplierJSON() {
+  if (!state.report) return null;
+  return {
+    _version: "cantonmaster-v2",
+    _exported_at: new Date().toISOString(),
+    _rfq: state.rfq || null,
+    contacto: state.report.contacto || {},
+    produto: state.report.produto || {},
+    comercial: state.report.comercial || {},
+    evaluacion: state.report.evaluacion || {},
+    privado: state.report.privado || {},
+    resumen_ejecutivo: state.report.resumen_ejecutivo || '',
+    transcripciones: {
+      conversacion: state.convTranscript || '',
+      notas_privadas: state.notesTranscript || ''
+    },
+    captura: {
+      fotos_producto: state.productPhotos.length,
+      fotos_stand: state.standPhotos.length,
+      tiene_tarjeta: !!state.cardImageB64,
+      fecha: new Date().toISOString().slice(0, 10)
+    }
+  };
+}
+
+function copySupplierJSON() {
+  const json = buildSupplierJSON();
+  if (!json) { showToast('Generá el informe primero'); return; }
+  const text = JSON.stringify(json, null, 2);
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => showToast('✓ JSON copiado — pegalo en Claude'));
+  } else {
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); ta.remove();
+    showToast('✓ JSON copiado — pegalo en Claude');
+  }
 }
 
 function copyReport(){navigator.clipboard.writeText(buildTxt()).then(()=>showToast('✓ Copiado al portapapeles'));}
@@ -802,6 +843,12 @@ async function uploadToDrive(){
       }
     }
 
+    // Upload structured supplier JSON
+    const supplierJson=buildSupplierJSON();
+    if(supplierJson){
+      btn.textContent='Subiendo datos estructurados...';
+      await uploadFileToDrive(token,rfqId,buildFilename('json').replace(/json$/,'supplier-data.json'),JSON.stringify(supplierJson,null,2),'application/json');
+    }
     btn.textContent='☁ Guardado en Drive ✓';
     btn.style.background='var(--success)';btn.style.color='#0a0a0f';
     showToast('✓ Guardado en Drive: '+rfqFolder);
